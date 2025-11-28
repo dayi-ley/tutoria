@@ -1,8 +1,10 @@
 import { useState, useEffect, Fragment } from 'react'
 import LogoutButton from '../auth/LogoutButton.jsx'
+import HorarioCalendarioView from './HorarioCalendario.jsx'
+import HistorialSesionesView from './HistorialSesiones.jsx'
 import { EmailAuthProvider, linkWithCredential } from 'firebase/auth'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
-import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, onSnapshot } from 'firebase/firestore'
+import { doc, setDoc, getDoc, getDocs, serverTimestamp, collection, query, where, onSnapshot } from 'firebase/firestore'
 import { storage, db, supabase, storageProvider } from '../firebase'
 
 const sections = [
@@ -110,7 +112,7 @@ export default function Dashboard({ user, profile }) {
         </div>
       </aside>
       <main className="content-area">
-        {active !== 'documentos' && active !== 'mis-tutorias' && (
+        {active !== 'documentos' && active !== 'mis-tutorias' && active !== 'horario' && (
           <div className="content-header">{sections.find((x) => x.key === active)?.label}</div>
         )}
         {active === 'mis-tutorias' ? (
@@ -119,8 +121,12 @@ export default function Dashboard({ user, profile }) {
           <div className="content-card">
             {active === 'documentos' ? (
               <DocumentosView uid={user?.uid} name={name} />
+            ) : active === 'horario' ? (
+              <HorarioCalendarioView docenteId={user?.uid} docenteEmail={user?.email || ''} />
+            ) : active === 'historial-sesiones' ? (
+              <HistorialSesionesView />
             ) : active === 'historial-derivaciones' ? (
-              <DerivacionesHistorialView docenteId={user?.email || user?.uid} />
+              <DerivacionesHistorialView docenteId={user?.uid} docenteEmail={user?.email || ''} />
             ) : (
               <div className="placeholder">Contenido por implementar</div>
             )}
@@ -131,35 +137,74 @@ export default function Dashboard({ user, profile }) {
   )
 }
 
-function DerivacionesHistorialView({ docenteId }) {
+function DerivacionesHistorialView({ docenteId, docenteEmail }) {
   const [items, setItems] = useState([])
-  const [usingFallback, setUsingFallback] = useState(false)
+  const [salonDoc, setSalonDoc] = useState({ ciclo: '', seccion: '' })
+  const [aulaByAlumno, setAulaByAlumno] = useState({})
   useEffect(() => {
     if (!db) return
-    const clauses = []
-    if (docenteId) clauses.push(where('docenteId', '==', docenteId))
-    let q = clauses.length ? query(collection(db, 'derivaciones'), ...clauses) : query(collection(db, 'derivaciones'))
-    let unsub = onSnapshot(q, (snap) => {
-      const list = []
-      snap.forEach((d) => list.push({ id: d.id, ...(d.data() || {}) }))
-      setItems(list)
-      if (list.length === 0 && !usingFallback && docenteId) {
-        setUsingFallback(true)
-        unsub()
-        const fb = query(collection(db, 'derivaciones'), where('docenteEmail', '==', docenteId))
-        unsub = onSnapshot(fb, (snap2) => {
-          const list2 = []
-          snap2.forEach((d2) => list2.push({ id: d2.id, ...(d2.data() || {}) }))
-          setItems(list2)
-        }, (err) => console.error('Error derivaciones fallback:', err?.code || err?.name, err?.message || String(err)))
-      }
-    }, (err) => console.error('Error derivaciones:', err?.code || err?.name, err?.message || String(err)))
+    const byIdValues = []
+    if (docenteId) byIdValues.push(docenteId)
+    if (docenteEmail) byIdValues.push(docenteEmail)
+    const listeners = []
+    const map = new Map()
+
+    if (byIdValues.length === 1) {
+      const q1 = query(collection(db, 'derivaciones'), where('docenteId', '==', byIdValues[0]))
+      listeners.push(onSnapshot(q1, (snap) => {
+        snap.forEach((d) => map.set(d.id, { id: d.id, ...(d.data() || {}) }))
+        setItems(Array.from(map.values()).sort((a,b) => (b?.createdAt?.toMillis?.() || 0) - (a?.createdAt?.toMillis?.() || 0)))
+      }, (err) => console.error('Error derivaciones by docenteId:', err?.code || err?.name, err?.message || String(err))))
+    } else if (byIdValues.length > 1) {
+      const qIn = query(collection(db, 'derivaciones'), where('docenteId', 'in', byIdValues))
+      listeners.push(onSnapshot(qIn, (snap) => {
+        snap.forEach((d) => map.set(d.id, { id: d.id, ...(d.data() || {}) }))
+        setItems(Array.from(map.values()).sort((a,b) => (b?.createdAt?.toMillis?.() || 0) - (a?.createdAt?.toMillis?.() || 0)))
+      }, (err) => console.error('Error derivaciones docenteId in:', err?.code || err?.name, err?.message || String(err))))
+    }
+
+    if (docenteEmail) {
+      const q2 = query(collection(db, 'derivaciones'), where('docenteEmail', '==', docenteEmail))
+      listeners.push(onSnapshot(q2, (snap) => {
+        snap.forEach((d) => map.set(d.id, { id: d.id, ...(d.data() || {}) }))
+        setItems(Array.from(map.values()).sort((a,b) => (b?.createdAt?.toMillis?.() || 0) - (a?.createdAt?.toMillis?.() || 0)))
+      }, (err) => console.error('Error derivaciones by docenteEmail:', err?.code || err?.name, err?.message || String(err))))
+    }
+
+    return () => listeners.forEach((unsub) => { try { unsub() } catch (e) { void e } })
+  }, [docenteId, docenteEmail])
+
+  useEffect(() => {
+    if (!db) return
+    const key = docenteEmail || docenteId
+    if (!key) return
+    const q = query(collection(db, 'salones'), where('docenteTutor_id', '==', key))
+    const unsub = onSnapshot(q, (snap) => {
+      const first = snap.docs[0]?.data() || null
+      if (first) setSalonDoc({ ciclo: String(first.ciclo || ''), seccion: String(first.seccion || '') })
+    })
     return () => unsub()
-  }, [docenteId, usingFallback])
+  }, [docenteId, docenteEmail])
+
+  useEffect(() => {
+    if (!db) return
+    const missing = items.filter((x) => (!x?.aula?.ciclo || !x?.aula?.seccion) && x?.alumnoId)
+    if (!missing.length) return
+    ;(async () => {
+      const next = { ...aulaByAlumno }
+      for (const it of missing) {
+        try {
+          const snap = await getDoc(doc(db, 'alumnos', it.alumnoId))
+          const data = snap.exists() ? (snap.data() || {}) : {}
+          if (data?.aula?.ciclo || data?.aula?.seccion) next[it.alumnoId] = data.aula
+        } catch (e) { void e }
+      }
+      setAulaByAlumno(next)
+    })()
+  }, [items, aulaByAlumno])
 
   return (
     <div>
-      <div className="content-header">Historial de derivaciones</div>
       <div className="table-responsive">
         <table className="mis-tutorias-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
@@ -178,8 +223,8 @@ function DerivacionesHistorialView({ docenteId }) {
                 <td>{x.alumnoNombre || ''}</td>
                 <td>{x.alumnoEmail || ''}</td>
                 <td>{x.destino || ''}</td>
-                <td>{x?.aula?.ciclo || ''}</td>
-                <td>{x?.aula?.seccion || ''}</td>
+                <td>{x?.aula?.ciclo || aulaByAlumno[x.alumnoId]?.ciclo || salonDoc?.ciclo || ''}</td>
+                <td>{x?.aula?.seccion || aulaByAlumno[x.alumnoId]?.seccion || salonDoc?.seccion || ''}</td>
                 <td>{x.createdAt ? (x.createdAt.toDate ? x.createdAt.toDate().toLocaleString() : '') : ''}</td>
               </tr>
             ))}
@@ -426,6 +471,19 @@ function MisTutoriasView({ ciclo, seccion, docenteId, docenteEmail, docenteNombr
   const [usingFallback, setUsingFallback] = useState(false)
   const [derivarMenu, setDerivarMenu] = useState({ open: false, idx: null, nombre: '' })
   const [derivarToast, setDerivarToast] = useState('')
+  const [salonDocente, setSalonDocente] = useState({ ciclo: ciclo || '', seccion: seccion || '', curso: '', dia: '' })
+  const [derivacionesCount, setDerivacionesCount] = useState(0)
+  const [newTutOpen, setNewTutOpen] = useState(false)
+  const [newTutTema, setNewTutTema] = useState('')
+  const [newTutTipo, setNewTutTipo] = useState('Presencial')
+  const [newTutFecha, setNewTutFecha] = useState('')
+  const [newTutInicio, setNewTutInicio] = useState('')
+  const [newTutFin, setNewTutFin] = useState('')
+  const [newTutSel, setNewTutSel] = useState([])
+  const [newTutErr, setNewTutErr] = useState('')
+  const [newTutOk, setNewTutOk] = useState('')
+  const [newTutToast, setNewTutToast] = useState('')
+  const todayStr = (() => { const d = new Date(); const y = d.getFullYear(); const m = String(d.getMonth()+1).padStart(2,'0'); const da = String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${da}` })()
 
   useEffect(() => {
     if (!db) return
@@ -458,6 +516,7 @@ function MisTutoriasView({ ciclo, seccion, docenteId, docenteEmail, docenteNombr
           telefono: x.telefono || '',
           email: x.email || '',
           cursos,
+          aula: x.aula || {},
           curso: x.curso || '',
           dia: x.dia || '',
           rendimiento,
@@ -476,6 +535,10 @@ function MisTutoriasView({ ciclo, seccion, docenteId, docenteEmail, docenteNombr
         missingAula,
         filtros: { docenteId: Boolean(docenteId), seccion: seccion || null, ciclo: ciclo || null, fallback: usingFallback }
       })
+      if (!salonDocente.ciclo || !salonDocente.seccion) {
+        const cand = list.find((a) => a?.aula?.ciclo && a?.aula?.seccion)
+        if (cand) setSalonDocente({ ciclo: String(cand.aula.ciclo), seccion: String(cand.aula.seccion), curso: salonDocente.curso, dia: salonDocente.dia })
+      }
       if (list.length === 0 && !usingFallback && seccion) {
         console.warn('Sin alumnos por docenteId. Probando fallback por aula (sección/ciclo).')
         setUsingFallback(true)
@@ -499,6 +562,7 @@ function MisTutoriasView({ ciclo, seccion, docenteId, docenteEmail, docenteNombr
               telefono: x.telefono || '',
               email: x.email || '',
               cursos,
+              aula: x.aula || {},
               curso: x.curso || '',
               dia: x.dia || '',
               rendimiento,
@@ -522,12 +586,58 @@ function MisTutoriasView({ ciclo, seccion, docenteId, docenteEmail, docenteNombr
     return () => unsub()
   }, [docenteId, ciclo, seccion, usingFallback])
 
+  useEffect(() => {
+    if (!db || !docenteId) return
+    const q = query(collection(db, 'salones'), where('docenteTutor_id', '==', docenteId))
+    const unsub = onSnapshot(q, (snap) => {
+      const first = snap.docs[0]?.data() || null
+      if (first) {
+        setSalonDocente({
+          ciclo: String(first.ciclo || ciclo || ''),
+          seccion: String(first.seccion || seccion || ''),
+          curso: String(first.curso || ''),
+          dia: String(first.dia || ''),
+        })
+      }
+    }, (err) => console.error('Error cargando salón del docente:', err?.code || err?.name, err?.message || String(err)))
+    return () => unsub()
+  }, [docenteId, ciclo, seccion])
+
+  useEffect(() => {
+    if (!db) return
+    const ids = []
+    if (docenteId) ids.push(docenteId)
+    if (docenteEmail) ids.push(docenteEmail)
+    const listeners = []
+    const map = new Map()
+    if (ids.length === 1) {
+      const q1 = query(collection(db, 'derivaciones'), where('docenteId', '==', ids[0]))
+      listeners.push(onSnapshot(q1, (snap) => {
+        snap.forEach((d) => map.set(d.id, 1))
+        setDerivacionesCount(map.size)
+      }))
+    } else if (ids.length > 1) {
+      const qIn = query(collection(db, 'derivaciones'), where('docenteId', 'in', ids))
+      listeners.push(onSnapshot(qIn, (snap) => {
+        snap.forEach((d) => map.set(d.id, 1))
+        setDerivacionesCount(map.size)
+      }))
+      const q2 = query(collection(db, 'derivaciones'), where('docenteEmail', '==', docenteEmail))
+      listeners.push(onSnapshot(q2, (snap) => {
+        snap.forEach((d) => map.set(d.id, 1))
+        setDerivacionesCount(map.size)
+      }))
+    }
+    return () => listeners.forEach((u) => { try { u() } catch (e) { void e } })
+  }, [docenteId, docenteEmail])
+
 
   const tutorados = alumnos.length
-  const semestre = ciclo || '2025-II'
+  const cicloLabel = (salonDocente?.ciclo || ciclo || '-')
+  const seccionLabel = (salonDocente?.seccion || seccion || '-')
   const grupalCount = tipoPorIdx.filter((t) => t === 'Grupal').length
   const individualCount = tipoPorIdx.filter((t) => t === 'Individual').length
-  const derivadoCount = derivados.size
+  
   const neeCount = alumnos.filter((a) => a.nee).length
   const repitentesCount = alumnos.filter((a) => a.repitente).length
 
@@ -552,20 +662,109 @@ function MisTutoriasView({ ciclo, seccion, docenteId, docenteEmail, docenteNombr
     setTipoPorIdx(next)
   }
 
+  const openNuevaTutoria = () => {
+    setNewTutErr('')
+    setNewTutOk('')
+    if (seleccionados.size === 0) {
+      setDerivarToast('Selecciona al menos un alumno')
+      setTimeout(() => setDerivarToast(''), 2000)
+      return
+    }
+    const arr = Array.from(seleccionados)
+    setNewTutSel(arr)
+    setNewTutTema('')
+    setNewTutTipo('Presencial')
+    setNewTutFecha('')
+    setNewTutInicio('')
+    setNewTutFin('')
+    setNewTutOpen(true)
+  }
+
+  const removeSelIdx = (idx) => {
+    const filtered = newTutSel.filter((v) => v !== idx)
+    setNewTutSel(filtered)
+  }
+
+  const saveNuevaTutoria = async () => {
+    setNewTutErr('')
+    setNewTutOk('')
+    if (!newTutTema.trim()) { setNewTutErr('Ingresa el tema a tratar'); setNewTutToast('Ingresa el tema a tratar'); setTimeout(() => setNewTutToast(''), 2500); return }
+    if (newTutTema.trim().length > 120) { setNewTutErr('El tema no debe exceder 120 caracteres'); setNewTutToast('El tema no debe exceder 120 caracteres'); setTimeout(() => setNewTutToast(''), 2500); return }
+    if (!newTutTipo) { setNewTutErr('Selecciona el tipo de sesión'); setNewTutToast('Selecciona el tipo de sesión'); setTimeout(() => setNewTutToast(''), 2500); return }
+    if (!newTutFecha) { setNewTutErr('Selecciona la fecha'); setNewTutToast('Selecciona la fecha'); setTimeout(() => setNewTutToast(''), 2500); return }
+    if (newTutFecha < todayStr) { setNewTutErr('No se permiten fechas anteriores a hoy'); setNewTutToast('No se permiten fechas anteriores a hoy'); setTimeout(() => setNewTutToast(''), 2500); return }
+    if (!newTutInicio || !newTutFin) { setNewTutErr('Selecciona hora inicial y final'); setNewTutToast('Selecciona hora inicial y final'); setTimeout(() => setNewTutToast(''), 2500); return }
+    if (newTutSel.length === 0) { setNewTutErr('Debes tener al menos un alumno'); setNewTutToast('Debes tener al menos un alumno'); setTimeout(() => setNewTutToast(''), 2500); return }
+    const allowed = String(salonDocente.dia || '').toLowerCase()
+    if (allowed) {
+      const d = new Date(newTutFecha)
+      const dn = d.getDay()
+      const map = { 'domingo':0, 'lunes':1, 'martes':2, 'miercoles':3, 'miércoles':3, 'jueves':4, 'viernes':5, 'sabado':6, 'sábado':6 }
+      const want = map[allowed] ?? null
+      if (want != null && dn !== want) { setNewTutErr(`La fecha debe ser ${salonDocente.dia}`); setNewTutToast(`La fecha debe ser ${salonDocente.dia}`); setTimeout(() => setNewTutToast(''), 2500); return }
+    }
+    if (newTutInicio >= newTutFin) { setNewTutErr('La hora inicial debe ser menor que la final'); setNewTutToast('La hora inicial debe ser menor que la final'); setTimeout(() => setNewTutToast(''), 2500); return }
+    try {
+      const toMin = (t) => { const parts = String(t).split(':'); const h = parseInt(parts[0] || '0', 10); const m = parseInt(parts[1] || '0', 10); return (h * 60) + m }
+      const qOverlap = query(collection(db, 'tutorias'), where('docenteId', '==', docenteId || ''), where('fecha', '==', newTutFecha))
+      const snapOv = await getDocs(qOverlap)
+      const sNew = toMin(newTutInicio)
+      const eNew = toMin(newTutFin)
+      let conflict = false
+      snapOv.forEach((d) => {
+        const x = d.data() || {}
+        const sOld = toMin(x.horaInicio || '')
+        const eOld = toMin(x.horaFin || '')
+        if (sNew < eOld && sOld < eNew) conflict = true
+      })
+      if (conflict) { setNewTutErr('Existe una tutoría registrada en ese horario'); setNewTutToast('Existe una tutoría registrada en ese horario'); setTimeout(() => setNewTutToast(''), 2500); return }
+      const alumnosIds = newTutSel.map((i) => alumnos[i]?.id).filter(Boolean)
+      const aula = { ciclo: salonDocente.ciclo || ciclo || '', seccion: salonDocente.seccion || seccion || '' }
+      const payload = {
+        tema: newTutTema.trim(),
+        tipoSesion: newTutTipo,
+        alumnosIds,
+        alumnosNombres: alumnosIds.map((id) => (alumnos.find((a) => a.id === id)?.nombre || '')),
+        aula,
+        curso: salonDocente.curso || '',
+        dia: salonDocente.dia || '',
+        fecha: newTutFecha,
+        horaInicio: newTutInicio,
+        horaFin: newTutFin,
+        realizada: false,
+        docenteId: docenteId || '',
+        docenteEmail: docenteEmail || '',
+        docenteNombre: docenteNombre || '',
+        createdAt: serverTimestamp(),
+      }
+      const id = `${docenteId || 'docente'}-${Date.now()}`
+      await setDoc(doc(db, 'tutorias', id), payload)
+      setNewTutOpen(false)
+      setNewTutOk('Tutoría registrada')
+      setTimeout(() => setNewTutOk(''), 2000)
+    } catch (e) {
+      const msg = e?.message || String(e)
+      setNewTutErr(msg)
+      setNewTutToast(msg)
+      setTimeout(() => setNewTutToast(''), 2500)
+    }
+  }
+
   return (
     <div>
       <div className="content-header-row small">
         <div className="header-actions left">
-          <button className="btn-new small">+ Nueva tutoría</button>
+          <button className="btn-new small" onClick={openNuevaTutoria}>+ Nueva tutoría</button>
           <button className="btn-select-all small" onClick={toggleSelectAll}>{isAllSelected ? 'Deseleccionar todos' : 'Seleccionar todos'}</button>
           
         </div>
         <div className="stats-list right">
           <div className="stat-item"><span className="stat-icon">👥</span><span className="stat-label">Tutorados</span><span className="stat-value">{tutorados}</span></div>
-          <div className="stat-item"><span className="stat-icon">🗓️</span><span className="stat-label">Semestre</span><span className="stat-value">{semestre}</span></div>
+          <div className="stat-item"><span className="stat-icon">🏷️</span><span className="stat-label">Ciclo</span><span className="stat-value">{cicloLabel}</span></div>
+          <div className="stat-item"><span className="stat-icon">🔖</span><span className="stat-label">Sección</span><span className="stat-value">{seccionLabel}</span></div>
           <div className="stat-item"><span className="stat-icon">🧑‍🤝‍🧑</span><span className="stat-label">Grupal</span><span className="stat-value">{grupalCount}</span></div>
           <div className="stat-item"><span className="stat-icon">👤</span><span className="stat-label">Individual</span><span className="stat-value">{individualCount}</span></div>
-          <div className="stat-item"><span className="stat-icon">🔗</span><span className="stat-label">Derivado</span><span className="stat-value">{derivadoCount}</span></div>
+          <div className="stat-item"><span className="stat-icon">🔗</span><span className="stat-label">Derivaciones</span><span className="stat-value">{derivacionesCount}</span></div>
           <div className="stat-item"><span className="stat-icon">♿</span><span className="stat-label">Estudiantes NEE</span><span className="stat-value">{neeCount}</span></div>
           <div className="stat-item"><span className="stat-icon">🔁</span><span className="stat-label">Repitentes</span><span className="stat-value">{repitentesCount}</span></div>
         </div>
@@ -678,9 +877,12 @@ function MisTutoriasView({ ciclo, seccion, docenteId, docenteEmail, docenteNombr
                         docenteEmail: docenteEmail || '',
                         docenteNombre: docenteNombre || '',
                         destino: op,
-                        aula: { ciclo: ciclo || '', seccion: seccion || '' },
-                        curso: alumnos[derivarMenu.idx]?.curso || '',
-                        dia: alumnos[derivarMenu.idx]?.dia || '',
+                        aula: {
+                          ciclo: (salonDocente.ciclo || alumnos[derivarMenu.idx]?.aula?.ciclo || ciclo || ''),
+                          seccion: (salonDocente.seccion || alumnos[derivarMenu.idx]?.aula?.seccion || seccion || ''),
+                        },
+                        curso: salonDocente.curso || alumnos[derivarMenu.idx]?.curso || '',
+                        dia: salonDocente.dia || alumnos[derivarMenu.idx]?.dia || '',
                         createdAt: serverTimestamp(),
                       })
                       setDerivarMenu({ open: false, idx: null, nombre: '' })
@@ -700,9 +902,69 @@ function MisTutoriasView({ ciclo, seccion, docenteId, docenteEmail, docenteNombr
         </div>
       )}
 
+      {newTutOpen && (
+        <div className="modal-backdrop" onClick={() => setNewTutOpen(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ width: 'min(820px, 92vw)', margin: '2vh auto', boxSizing: 'border-box' }}>
+            <div className="form-group" style={{ textAlign: 'left' }}>
+              <label htmlFor="tema">Tema a tratar</label>
+              <input id="tema" type="text" value={newTutTema} onChange={(e) => setNewTutTema(e.target.value)} maxLength={120} />
+            </div>
+            <div className="form-group" style={{ textAlign: 'left' }}>
+              <label htmlFor="tipoSesion">Tipo de sesión</label>
+              <select id="tipoSesion" className="select-modal" value={newTutTipo} onChange={(e) => setNewTutTipo(e.target.value)}>
+                <option>Presencial</option>
+                <option>Virtual</option>
+                <option>Otra</option>
+              </select>
+            </div>
+            <div className="content-header" style={{ marginTop: '0.5rem', textAlign: 'left', color: '#000' }}>Alumnos seleccionados</div>
+            <div style={{ display: 'grid', gap: '0.4rem', maxHeight: '200px', overflowY: 'auto', border: '1px solid #eee', borderRadius: '8px', padding: '0.5rem', background: '#fff', color: '#222' }}>
+              {newTutSel.map((idx) => (
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>{alumnos[idx]?.nombre || ''}</span>
+                  <button className="btn-info" onClick={() => removeSelIdx(idx)}>Quitar</button>
+                </div>
+              ))}
+              {newTutSel.length === 0 && <p>No hay alumnos seleccionados</p>}
+            </div>
+            <div className="content-header" style={{ marginTop: '1rem', textAlign: 'left' }}>Programación</div>
+            <div style={{ display: 'block', width: '100%', maxWidth: '640px', background: '#fff', color: '#222', border: '1px solid #eee', borderRadius: '8px', padding: '0.6rem', boxSizing: 'border-box', overflowX: 'hidden' }}>
+              <div style={{ textAlign: 'left', marginBottom: '0.6rem' }}>
+                <label htmlFor="fechaTut">Fecha</label>
+                <input id="fechaTut" type="date" min={todayStr} value={newTutFecha} onChange={(e) => setNewTutFecha(e.target.value)} />
+                <small> dd/mm/aaaa</small>
+                {salonDocente?.dia && <small> · Solo día: {salonDocente.dia}</small>}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-start', gap: '0.6rem' }}>
+                <div style={{ textAlign: 'left' }}>
+                  <label htmlFor="horaIni">Hora inicial</label>
+                  <input id="horaIni" type="time" value={newTutInicio} onChange={(e) => setNewTutInicio(e.target.value)} />
+                  <small> --:--</small>
+                </div>
+                <div style={{ textAlign: 'left' }}>
+                  <label htmlFor="horaFin">Hora final</label>
+                  <input id="horaFin" type="time" value={newTutFin} onChange={(e) => setNewTutFin(e.target.value)} />
+                  <small> --:--</small>
+                </div>
+              </div>
+            </div>
+            {newTutErr && <p className="error-text" style={{ marginTop: '0.25rem' }}>{newTutErr}</p>}
+            {newTutOk && <p className="ok-text" style={{ marginTop: '0.25rem' }}>{newTutOk}</p>}
+            <div className="actions" style={{ marginTop: '0.75rem', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+              <button className="btn-confirm" onClick={saveNuevaTutoria}>Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {derivarToast && (
         <div className="tooltip-toast">
           <div className="tooltip-card">{derivarToast}</div>
+        </div>
+      )}
+      {newTutToast && (
+        <div className="tooltip-toast">
+          <div className="tooltip-card">{newTutToast}</div>
         </div>
       )}
     </div>

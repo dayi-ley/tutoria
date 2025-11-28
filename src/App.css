@@ -656,6 +656,11 @@
   color: #fff;
   border-color: #1f8f4b;
 }
+.btn-confirm {
+  background: #1f8f4b;
+  color: #fff !important;
+  border: none !important;
+}
 .tooltip-toast {
   position: fixed;
   top: 50%;
@@ -664,12 +669,20 @@
   z-index: 1000;
 }
 .tooltip-card {
-  background: #ffffff;
-  color: #222;
+  background: #d64545;
+  color: #fff;
   border: 1px solid rgba(0,0,0,0.12);
   border-radius: 12px;
   padding: 0.6rem 0.9rem;
   box-shadow: 0 10px 30px rgba(0,0,0,0.16);
+}
+
+.select-modal {
+  background: #ffffff !important;
+  color: var(--fiei-primary) !important;
+  border: 1px solid #dcdcdc !important;
+  border-radius: 8px !important;
+  padding: 0.4rem 0.6rem !important;
 }
 
 .registro-table input,
@@ -698,3 +711,23 @@
 .content-header-row.small { margin-bottom: 1.15rem }
 .table-responsive { width: 100%; overflow-x: auto }
 .table-responsive table { width: 100% }
+
+.cal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem }
+.cal-title { font-weight: 600; color: var(--fiei-primary) }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px }
+.cal-cell { background: #fff; border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; min-height: 64px; padding: 6px; box-sizing: border-box }
+.cal-head { background: #f3f3f3; color: #555; text-align: center; font-weight: 700; min-height: 32px; padding: 2px }
+.cal-empty { background: transparent; border: none }
+.cal-day-number { font-weight: 700; font-size: 0.86rem; color: #222 }
+.cal-has-pending .cal-day-number, .cal-has-done .cal-day-number { color: #fff }
+.cal-has-pending { background: rgba(214,69,69,0.12); border-color: #d64545 }
+.cal-has-done { background: rgba(31,143,75,0.12); border-color: #1f8f4b }
+.cal-badge { margin-top: 4px; font-size: 0.72rem; background: #fafafa; border: 1px solid rgba(0,0,0,0.08); border-radius: 6px; padding: 2px 4px; color: #222 }
+.cal-legend { display: flex; gap: 0.6rem; margin-top: 0.5rem }
+.cal-legend .legend-item { display: inline-flex; align-items: center; gap: 0.35rem; color: #222 }
+.cal-legend .legend-item.pending::before { content: ""; display: inline-block; width: 12px; height: 12px; background: #d64545; border-radius: 3px }
+.cal-legend .legend-item.done::before { content: ""; display: inline-block; width: 12px; height: 12px; background: #1f8f4b; border-radius: 3px }
+.historial-table thead tr { background: #573f3b }
+.historial-table thead th { color: #fff; border: 1px solid rgba(255,255,255,0.2) }
+.historial-table tbody td,
+.historial-table tbody th { border: 1px solid rgba(0,0,0,0.12); font-size: 0.82rem; padding: 0.35rem 0.4rem }

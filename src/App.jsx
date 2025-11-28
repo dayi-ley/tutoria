@@ -8,7 +8,7 @@ import { firebaseReady } from './firebase'
 import useUserProfile from './hooks/useUserProfile.js'
 import { updateUserRole, provisionDocente, ensureUserProfile } from './services/users.js'
 import { isDomainAllowed, isDocenteAllowed, isOficinaAllowed } from './services/access.js'
-import { signOut, EmailAuthProvider, linkWithCredential } from 'firebase/auth'
+import { signOut } from 'firebase/auth'
 import { auth } from './firebase'
 import DocenteDashboard from './docente/Dashboard.jsx'
 import EstudianteDashboard from './estudiante/Dashboard.jsx'
@@ -20,11 +20,7 @@ function App() {
   const [authError, setAuthError] = useState('')
   const [docenteAllowed, setDocenteAllowed] = useState(null)
   const [roleHint, setRoleHint] = useState('')
-  const [pw, setPw] = useState('')
-  const [pw2, setPw2] = useState('')
-  const [linkError, setLinkError] = useState('')
-  const [linkOk, setLinkOk] = useState('')
-  const [linkLoading, setLinkLoading] = useState(false)
+  
   const [hiddenLogin, setHiddenLogin] = useState(false)
 
   useEffect(() => {
@@ -153,47 +149,7 @@ function App() {
             <>
               {authError && <p className="error-text">{authError}</p>}
               {loadingProfile && <p>Cargando perfil...</p>}
-              {!loadingProfile && user && !user.providerData?.some((p) => p.providerId === 'password') && (
-                <div className="info-card" style={{ marginBottom: '0.75rem' }}>
-                  <p>Crea una contraseña para acceder también con correo y contraseña.</p>
-                  <form
-                    onSubmit={async (e) => {
-                      e.preventDefault()
-                      setLinkError('')
-                      setLinkOk('')
-                      if (!pw || pw.length < 6) { setLinkError('La contraseña debe tener al menos 6 caracteres'); return }
-                      if (pw !== pw2) { setLinkError('Las contraseñas no coinciden'); return }
-                      try {
-                        setLinkLoading(true)
-                        const cred = EmailAuthProvider.credential(user.email, pw)
-                        await linkWithCredential(user, cred)
-                        setLinkOk('Contraseña creada. Ya puedes ingresar con correo y contraseña.')
-                        setPw('')
-                        setPw2('')
-                      } catch (err) {
-                        setLinkError(err?.message || String(err))
-                      } finally {
-                        setLinkLoading(false)
-                      }
-                    }}
-                    className="login-form"
-                  >
-                    <div className="form-group">
-                      <label htmlFor="newpwd">Nueva contraseña</label>
-                      <input id="newpwd" type="password" value={pw} onChange={(e) => setPw(e.target.value)} required />
-                    </div>
-                    <div className="form-group">
-                      <label htmlFor="newpwd2">Confirmar contraseña</label>
-                      <input id="newpwd2" type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} required />
-                    </div>
-                    <div className="actions" style={{ marginTop: '0.5rem' }}>
-                      <button type="submit" disabled={linkLoading}>Crear contraseña</button>
-                    </div>
-                    {linkError && <p className="error-text" style={{ marginTop: '0.25rem' }}>{linkError}</p>}
-                    {linkOk && <p style={{ marginTop: '0.25rem' }}>{linkOk}</p>}
-                  </form>
-                </div>
-              )}
+              
               {!loadingProfile && profile && (
                 ((profile?.rol) === 'docente' || roleHint === 'docente') ? (
                   docenteAllowed === false ? (
@@ -225,6 +181,7 @@ function App() {
                   </div>
                 )
               )}
+              
               {!loadingProfile && !profile && (
                 <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '1rem' }}>
                   <div className="loader" aria-label="Cargando" />
