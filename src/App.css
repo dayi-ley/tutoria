@@ -270,6 +270,7 @@
 .user-name {
   font-weight: 600;
 }
+.user-info { text-align: left }
 
 .online {
   display: flex;
@@ -677,6 +678,21 @@
   box-shadow: 0 10px 30px rgba(0,0,0,0.16);
 }
 
+@keyframes toast-pop {
+  0% { transform: scale(0.95); opacity: 0 }
+  60% { transform: scale(1.02); opacity: 1 }
+  100% { transform: scale(1); opacity: 1 }
+}
+.tooltip-card.success {
+  background: #1f8f4b;
+  color: #fff;
+  border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 12px;
+  padding: 0.6rem 0.9rem;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.16);
+  animation: toast-pop 280ms ease-out;
+}
+
 .select-modal {
   background: #ffffff !important;
   color: var(--fiei-primary) !important;
@@ -719,9 +735,9 @@
 .cal-head { background: #f3f3f3; color: #555; text-align: center; font-weight: 700; min-height: 32px; padding: 2px }
 .cal-empty { background: transparent; border: none }
 .cal-day-number { font-weight: 700; font-size: 0.86rem; color: #222 }
-.cal-has-pending .cal-day-number, .cal-has-done .cal-day-number { color: #fff }
-.cal-has-pending { background: rgba(214,69,69,0.12); border-color: #d64545 }
-.cal-has-done { background: rgba(31,143,75,0.12); border-color: #1f8f4b }
+.cal-has-pending .cal-day-number, .cal-has-done .cal-day-number { color: #222 }
+.cal-has-pending { background: rgba(214,69,69,0.28); border-color: #d64545 }
+.cal-has-done { background: rgba(31,143,75,0.28); border-color: #1f8f4b }
 .cal-badge { margin-top: 4px; font-size: 0.72rem; background: #fafafa; border: 1px solid rgba(0,0,0,0.08); border-radius: 6px; padding: 2px 4px; color: #222 }
 .cal-legend { display: flex; gap: 0.6rem; margin-top: 0.5rem }
 .cal-legend .legend-item { display: inline-flex; align-items: center; gap: 0.35rem; color: #222 }

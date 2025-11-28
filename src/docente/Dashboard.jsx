@@ -116,7 +116,7 @@ export default function Dashboard({ user, profile }) {
           <div className="content-header">{sections.find((x) => x.key === active)?.label}</div>
         )}
         {active === 'mis-tutorias' ? (
-          <MisTutoriasView ciclo={profile?.aula?.ciclo} seccion={profile?.aula?.seccion} docenteId={user?.email || user?.uid} docenteEmail={user?.email || ''} docenteNombre={name} />
+          <MisTutoriasView ciclo={profile?.aula?.ciclo} seccion={profile?.aula?.seccion} docenteId={user?.email || user?.uid} docenteUid={user?.uid} docenteEmail={user?.email || ''} docenteNombre={name} />
         ) : (
           <div className="content-card">
             {active === 'documentos' ? (
@@ -462,7 +462,7 @@ function DocumentosView({ uid, name }) {
   )
 }
 
-function MisTutoriasView({ ciclo, seccion, docenteId, docenteEmail, docenteNombre }) {
+function MisTutoriasView({ ciclo, seccion, docenteId, docenteUid, docenteEmail, docenteNombre }) {
   const [alumnos, setAlumnos] = useState([])
   const [detalle, setDetalle] = useState(null)
   const [seleccionados, setSeleccionados] = useState(() => new Set())
@@ -483,6 +483,7 @@ function MisTutoriasView({ ciclo, seccion, docenteId, docenteEmail, docenteNombr
   const [newTutErr, setNewTutErr] = useState('')
   const [newTutOk, setNewTutOk] = useState('')
   const [newTutToast, setNewTutToast] = useState('')
+  const [newTutOkToast, setNewTutOkToast] = useState('')
   const todayStr = (() => { const d = new Date(); const y = d.getFullYear(); const m = String(d.getMonth()+1).padStart(2,'0'); const da = String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${da}` })()
 
   useEffect(() => {
@@ -706,8 +707,9 @@ function MisTutoriasView({ ciclo, seccion, docenteId, docenteEmail, docenteNombr
     if (newTutInicio >= newTutFin) { setNewTutErr('La hora inicial debe ser menor que la final'); setNewTutToast('La hora inicial debe ser menor que la final'); setTimeout(() => setNewTutToast(''), 2500); return }
     try {
       const toMin = (t) => { const parts = String(t).split(':'); const h = parseInt(parts[0] || '0', 10); const m = parseInt(parts[1] || '0', 10); return (h * 60) + m }
-      const qOverlap = query(collection(db, 'tutorias'), where('docenteId', '==', docenteId || ''), where('fecha', '==', newTutFecha))
+      const qOverlap = query(collection(db, 'tutorias'), where('docenteId', '==', (docenteUid || docenteId || '')), where('fecha', '==', newTutFecha))
       const snapOv = await getDocs(qOverlap)
+      if (snapOv.size > 0) { setNewTutErr('Ya existe una tutoría registrada para este día'); setNewTutToast('Ya existe una tutoría registrada para este día'); setTimeout(() => setNewTutToast(''), 2500); return }
       const sNew = toMin(newTutInicio)
       const eNew = toMin(newTutFin)
       let conflict = false
@@ -732,7 +734,7 @@ function MisTutoriasView({ ciclo, seccion, docenteId, docenteEmail, docenteNombr
         horaInicio: newTutInicio,
         horaFin: newTutFin,
         realizada: false,
-        docenteId: docenteId || '',
+        docenteId: docenteUid || docenteId || '',
         docenteEmail: docenteEmail || '',
         docenteNombre: docenteNombre || '',
         createdAt: serverTimestamp(),
@@ -741,7 +743,9 @@ function MisTutoriasView({ ciclo, seccion, docenteId, docenteEmail, docenteNombr
       await setDoc(doc(db, 'tutorias', id), payload)
       setNewTutOpen(false)
       setNewTutOk('Tutoría registrada')
+      setNewTutOkToast('Tutoría registrada')
       setTimeout(() => setNewTutOk(''), 2000)
+      setTimeout(() => setNewTutOkToast(''), 1800)
     } catch (e) {
       const msg = e?.message || String(e)
       setNewTutErr(msg)
@@ -965,6 +969,11 @@ function MisTutoriasView({ ciclo, seccion, docenteId, docenteEmail, docenteNombr
       {newTutToast && (
         <div className="tooltip-toast">
           <div className="tooltip-card">{newTutToast}</div>
+        </div>
+      )}
+      {newTutOkToast && (
+        <div className="tooltip-toast">
+          <div className="tooltip-card success">{newTutOkToast}</div>
         </div>
       )}
     </div>
