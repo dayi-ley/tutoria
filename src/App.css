@@ -246,6 +246,10 @@
   background: #3a3a3a;
 }
 
+.sidebar-oficina {
+  background: #0a3a73;
+}
+
 .user-panel {
   display: flex;
   align-items: center;
@@ -363,6 +367,7 @@
 .btn-new { background: #1f8f4b; color: #fff; border: none }
 .btn-select-all { background: #ececec; color: #333; border: 1px solid rgba(0,0,0,0.1) }
 .select-tipo { padding: 0.25rem 0.4rem; border-radius: 6px; background: #fff; color: #222; font-weight: 400; border: 1px solid rgba(0,0,0,0.2); }
+.select-context { color: #000 !important; background: #fff !important; border: 1px solid #dcdcdc !important; border-radius: 8px; padding: 0.4rem 0.6rem; }
 
 .content-card {
   background: #fff;
@@ -376,6 +381,29 @@
 .content-card h3,
 .cumplimiento-title {
   text-align: left;
+}
+
+.registro-table th {
+  background: #e8f0fe;
+  color: #0a3a73;
+  text-align: left;
+  padding: 0.5rem;
+}
+.registro-table td {
+  padding: 0.6rem;
+  border-bottom: 1px solid rgba(0,0,0,0.08);
+  background: #ffffff;
+}
+.registro-table input,
+.registro-table select {
+  width: 100%;
+  box-sizing: border-box;
+  background: #ffffff;
+  color: #222;
+  border: 1px solid #dcdcdc;
+  border-radius: 8px;
+  padding: 0.6rem 0.7rem;
+  min-height: 36px;
 }
 
 .cumplimiento-plan {
@@ -498,6 +526,19 @@
   display: flex;
   justify-content: flex-start;
 }
+
+@keyframes spin {
+  from { transform: rotate(0deg) }
+  to { transform: rotate(360deg) }
+}
+.loader {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 3px solid #cfd4e3;
+  border-top-color: var(--fiei-primary);
+  animation: spin 0.9s linear infinite;
+}
 .sidebar-footer button {
   background: transparent;
   color: #fff;
@@ -528,31 +569,40 @@
 @media (max-width: 600px) {
   .sidebar {
     width: 100%;
-    padding: 0.4rem 0.5rem;
+    padding: 0.3rem 0.4rem;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    max-height: 64px;
+    overflow: hidden;
   }
   .user-panel { display: none }
   .menu {
     display: flex;
-    gap: 0.3rem;
+    gap: 0.25rem;
     overflow-x: auto;
     white-space: nowrap;
   }
   .menu-item {
-    font-size: 0.78rem;
-    padding: 0.35rem 0.5rem;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.45rem;
     border-radius: 6px;
   }
   .menu-item.active {
     margin-right: 0;
-    padding-right: 0.5rem;
+    padding-right: 0.45rem;
     border-radius: 6px;
     text-align: center;
     box-shadow: none;
   }
-  .sidebar-footer button {
-    font-size: 0.72rem;
-    padding: 0.25rem 0.4rem;
-  }
+  .sidebar-footer { display: none }
+  .table-responsive { width: 100%; overflow-x: auto }
+  .table-responsive .mis-tutorias-table { min-width: 900px }
+  .table-responsive .cumplimiento-grid { min-width: 700px }
+  .mis-tutorias-table th,
+  .mis-tutorias-table td { font-size: 0.72rem; padding: 0.3rem }
+  .cumplimiento-grid th,
+  .cumplimiento-grid td { font-size: 0.72rem; padding: 0.3rem }
 }
 .btn-info {
   padding: 0.28rem 0.5rem;
@@ -573,8 +623,63 @@
 .mis-tutorias-table tbody td,
 .mis-tutorias-table tbody th {
   border: 1px solid rgba(0,0,0,0.12);
+  font-size: 0.82rem;
+  padding: 0.35rem 0.4rem;
 }
 .mis-tutorias-table tbody tr.row-selected { background: rgba(87,63,59,0.09) }
+.mis-tutorias-table tbody tr.row-saved { background: rgba(31,143,75,0.08) }
+.mis-tutorias-table input,
+.mis-tutorias-table select {
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+  border: 1px solid #dcdcdc;
+  background: #ffffff;
+  color: #222;
+}
+.mis-tutorias-table .select-tipo {
+  padding: 0.2rem 0.35rem;
+  font-size: 0.72rem;
+  border-radius: 6px;
+}
+.mis-tutorias-table .btn-info {
+  padding: 0.2rem 0.4rem;
+  font-size: 0.72rem;
+  border-radius: 6px;
+}
+.btn-save {
+  background: #ececec;
+  color: #333;
+  border: 1px solid rgba(0,0,0,0.12);
+}
+.btn-save.saved {
+  background: #1f8f4b;
+  color: #fff;
+  border-color: #1f8f4b;
+}
+.tooltip-toast {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
+}
+.tooltip-card {
+  background: #ffffff;
+  color: #222;
+  border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 12px;
+  padding: 0.6rem 0.9rem;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.16);
+}
+
+.registro-table input,
+.registro-table select {
+  padding: 0.7rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid #dcdcdc;
+  background: #ffffff;
+  color: #222;
+}
 
 .tipo-toggle { display: inline-flex; gap: 0.3rem }
 .btn-tipo { padding: 0.25rem 0.5rem; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2); font-size: 0.78rem }
@@ -591,3 +696,5 @@
 .content-header-row.small .stat-value { font-size: 0.72rem }
 .content-header-row.small .stat-item { padding: 0.16rem 0.3rem }
 .content-header-row.small { margin-bottom: 1.15rem }
+.table-responsive { width: 100%; overflow-x: auto }
+.table-responsive table { width: 100% }

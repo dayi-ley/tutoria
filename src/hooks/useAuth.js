@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { onAuthStateChanged } from 'firebase/auth'
 import { auth } from '../firebase'
-import { ensureUserProfile } from '../services/users'
 
 export default function useAuth() {
   const hasAuth = Boolean(auth)
@@ -13,7 +12,6 @@ export default function useAuth() {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u)
       setLoading(false)
-      if (u) ensureUserProfile(u)
     })
     return () => unsub()
   }, [hasAuth])
