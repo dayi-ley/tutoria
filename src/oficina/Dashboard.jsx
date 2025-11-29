@@ -441,13 +441,13 @@ export default function Dashboard({ user }) {
             <h3 style={{ marginTop: '1rem' }}>Alumnos registrados</h3>
             <div className="content-header-row small">
               <div className="header-actions left">
-                <select className="menu-item" value={filters.docenteTutorId} onChange={(e) => setFilters({ ...filters, docenteTutorId: e.target.value })}>
-                  <option value="">Todos los docentes</option>
+                <select className="menu-item" value={filters.docenteTutorId} onChange={(e) => setFilters({ ...filters, docenteTutorId: e.target.value })} style={{ fontWeight: 700, color: '#000', WebkitTextFillColor: '#000', backgroundColor: '#fff', opacity: 1, border: '1px solid rgba(0,0,0,0.2)' }}>
+                  <option value="" style={{ color: '#000' }}>Todos los docentes</option>
                   {docentes.map((d) => (
-                    <option key={d.id} value={d.id}>{d.nombres || d.email || d.id}</option>
+                    <option key={d.id} value={d.id} style={{ color: '#000' }}>{d.nombres || d.email || d.id}</option>
                   ))}
                 </select>
-                <input className="menu-item" placeholder="Filtrar por carrera" value={filters.carrera} onChange={(e) => setFilters({ ...filters, carrera: e.target.value })} />
+                <input className="menu-item" placeholder="Filtrar por carrera" value={filters.carrera} onChange={(e) => setFilters({ ...filters, carrera: e.target.value })} style={{ fontWeight: 700, color: '#000' }} />
               </div>
             </div>
             <div className="table-responsive">

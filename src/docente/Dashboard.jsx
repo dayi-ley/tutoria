@@ -575,8 +575,12 @@ function MisTutoriasView({ ciclo, seccion, docenteId, docenteUid, docenteEmail, 
     if (!newTutInicio || !newTutFin) { setNewTutErr('Selecciona hora inicial y final'); setNewTutToast('Selecciona hora inicial y final'); setTimeout(() => setNewTutToast(''), 2500); return }
     if (newTutSel.length === 0) { setNewTutErr('Debes tener al menos un alumno'); setNewTutToast('Debes tener al menos un alumno'); setTimeout(() => setNewTutToast(''), 2500); return }
     const allowed = String(salonDocente.dia || '').toLowerCase()
-    if (allowed) {
-      const d = new Date(newTutFecha)
+    if (allowed && newTutFecha) {
+      const parts = String(newTutFecha).split('-')
+      const yy = parseInt(parts[0] || '0', 10)
+      const mm = parseInt(parts[1] || '1', 10)
+      const dd = parseInt(parts[2] || '1', 10)
+      const d = new Date(yy, (mm - 1), dd, 12, 0, 0)
       const dn = d.getDay()
       const map = { 'domingo':0, 'lunes':1, 'martes':2, 'miercoles':3, 'miércoles':3, 'jueves':4, 'viernes':5, 'sabado':6, 'sábado':6 }
       const want = map[allowed] ?? null
