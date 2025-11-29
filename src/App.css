@@ -427,6 +427,20 @@
 .badge.ok { background: #1f8f4b; color: #fff }
 .badge.no { background: #d64545; color: #fff }
 
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem 0.5rem;
+  min-height: 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+.status-badge.ok { background: #1f8f4b; color: #fff }
+.status-badge.no { background: #d64545; color: #fff }
+
 .cumplimiento-matriz {
   width: 100%;
   border-collapse: collapse;

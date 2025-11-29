@@ -13,14 +13,14 @@ export default function Dashboard({ user }) {
   const [err, setErr] = useState('')
   const [salones, setSalones] = useState([])
   const [salonForm, setSalonForm] = useState({ ciclo: '', seccion: 'A', docenteTutorId: '' })
-  const [asignForm, setAsignForm] = useState({ alumnoId: '', salonId: '' })
+  
   const [filters, setFilters] = useState({ docenteTutorId: '', carrera: '' })
   const [carForm, setCarForm] = useState({ alumnoId: '', carrera: '', turno: 'Mañana' })
   const [derivaciones, setDerivaciones] = useState([])
   const [derivForm, setDerivForm] = useState({ derivacionId: '', estado: 'Pendiente' })
   const [denuncias, setDenuncias] = useState([])
   const [statusDocentes, setStatusDocentes] = useState([])
-  const [carreras, setCarreras] = useState([])
+  const [_CARRERAS, setCarreras] = useState([])
   const [nuevoDocente, setNuevoDocente] = useState({ email: '', nombres: '', apellidos: '', telefono: '' })
   const [nuevoSalon, setNuevoSalon] = useState({ docenteNombres: '', docenteApellidos: '', carrera: '', ciclo: '', seccion: '', turno: '', docenteTutorId: '', curso: '', dia: '' })
   const [loadingDocentes, setLoadingDocentes] = useState(true)
@@ -29,7 +29,7 @@ export default function Dashboard({ user }) {
   const [errStatus, setErrStatus] = useState('')
   const [savedRows, setSavedRows] = useState([])
   const [okDocentes, setOkDocentes] = useState('')
-  const [errDocentes, setErrDocentes] = useState('')
+  const [_ERR_DOCENTES, setErrDocentes] = useState('')
   const [showSavePopup, setShowSavePopup] = useState(false)
   const [lastSavedEmail, setLastSavedEmail] = useState('')
   const submitNuevoSalon = async (e) => {
@@ -69,18 +69,18 @@ export default function Dashboard({ user }) {
       try {
         const ds = await getDocs(collection(db, 'docentes'))
         ds.forEach((d) => list.push({ id: d.id, ...(d.data() || {}) }))
-      } catch (e) {}
+      } catch (e) { console.warn(e?.message || String(e)) }
       if (!list.length) {
         try {
           const ds2 = await getDocs(collection(db, 'Docentes'))
           ds2.forEach((d) => list.push({ id: d.id, ...(d.data() || {}) }))
-        } catch (e) {}
+        } catch (e) { console.warn(e?.message || String(e)) }
       }
       if (!list.length) {
         try {
           const ds3 = await getDocs(collection(db, 'docente'))
           ds3.forEach((d) => list.push({ id: d.id, ...(d.data() || {}) }))
-        } catch (e) {}
+        } catch (e) { console.warn(e?.message || String(e)) }
       }
       try {
         const allow = await getDocs(collection(db, 'docentes_allowlist'))
@@ -101,6 +101,7 @@ export default function Dashboard({ user }) {
         setDocentes(Array.from(byId.values()))
       } catch (e) {
         setDocentes(list)
+        void e
       }
       setLoadingDocentes(false)
       const as = await getDocs(collection(db, 'alumnos'))
@@ -128,6 +129,7 @@ export default function Dashboard({ user }) {
         listA.forEach((a) => { if (a.carrera) setUniq.add(a.carrera) })
         listS.forEach((s) => { if (s.carrera) setUniq.add(s.carrera) })
         setCarreras(Array.from(setUniq))
+        void e
       }
       try {
         const dsDer = await getDocs(collection(db, 'derivaciones'))
@@ -213,28 +215,7 @@ export default function Dashboard({ user }) {
     }
   }
 
-  const submitAsignacion = async (e) => {
-    e.preventDefault()
-    setOk('')
-    setErr('')
-    const a = alumnos.find((x) => x.id === asignForm.alumnoId)
-    const s = salones.find((x) => x.id === asignForm.salonId)
-    if (!a || !s) { setErr('Selecciona alumno y salón'); return }
-    try {
-      await updateDoc(doc(db, 'alumnos', a.id), {
-        docenteTutorId: s.docenteTutor_id,
-        aula: { ciclo: s.ciclo, seccion: s.seccion },
-      })
-      setOk('Asignación actualizada')
-      const as = await getDocs(collection(db, 'alumnos'))
-      const listA = []
-      as.forEach((x) => listA.push({ id: x.id, ...(x.data() || {}) }))
-      setAlumnos(listA)
-      setAsignForm({ alumnoId: '', salonId: '' })
-    } catch (e) {
-      setErr(e?.message || String(e))
-    }
-  }
+  
 
 
   const createDocente = async (e) => {
@@ -286,7 +267,7 @@ export default function Dashboard({ user }) {
       try {
         const ds = await getDocs(collection(db, 'docentes'))
         ds.forEach((x) => list.push({ id: x.id, ...(x.data() || {}) }))
-      } catch (e) {}
+      } catch (e) { console.warn(e?.message || String(e)) }
       try {
         const allow = await getDocs(collection(db, 'docentes_allowlist'))
         const byId = new Map()
@@ -306,6 +287,7 @@ export default function Dashboard({ user }) {
         setDocentes(Array.from(byId.values()))
       } catch (e) {
         setDocentes(list)
+        void e
       }
       setOkDocentes('Docente actualizado')
       setSavedRows((prev) => Array.from(new Set([...(prev || []), id])))
@@ -924,5 +906,3 @@ export default function Dashboard({ user }) {
     </div>
   )
 }
-
-const defaultCursos = {}

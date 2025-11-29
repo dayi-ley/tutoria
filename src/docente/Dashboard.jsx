@@ -1,11 +1,13 @@
-import { useState, useEffect, Fragment } from 'react'
+import { useState, useEffect, Fragment, useMemo } from 'react'
+import DocumentosView from './DocumentosView.jsx'
+import MaterialApoyoView from './MaterialApoyo.jsx'
+import ForoView from './Foro.jsx'
 import LogoutButton from '../auth/LogoutButton.jsx'
 import HorarioCalendarioView from './HorarioCalendario.jsx'
 import HistorialSesionesView from './HistorialSesiones.jsx'
 import { EmailAuthProvider, linkWithCredential } from 'firebase/auth'
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { doc, setDoc, getDoc, getDocs, serverTimestamp, collection, query, where, onSnapshot } from 'firebase/firestore'
-import { storage, db, supabase, storageProvider } from '../firebase'
+import { db } from '../firebase'
 
 const sections = [
   { key: 'documentos', label: 'Gestión de documentos' },
@@ -15,7 +17,6 @@ const sections = [
   { key: 'historial-derivaciones', label: 'Historial de derivaciones' },
   { key: 'material-apoyo', label: 'Material de apoyo' },
   { key: 'foro', label: 'Foro' },
-  { key: 'manuales', label: 'Manual-tutoriales' },
 ]
 
 export default function Dashboard({ user, profile }) {
@@ -28,6 +29,72 @@ export default function Dashboard({ user, profile }) {
   const [linkError, setLinkError] = useState('')
   const [linkOk, setLinkOk] = useState('')
   const [pwdToast, setPwdToast] = useState('')
+  const [notifOpen, setNotifOpen] = useState(false)
+  const [notifList, setNotifList] = useState([])
+  const [lastNotifSeenAt, setLastNotifSeenAt] = useState(() => new Date(0))
+  const notifUnread = useMemo(() => notifList.filter((n) => {
+    const d = n?.createdAt
+    const t = d && d.toDate ? d.toDate() : null
+    return t && t > lastNotifSeenAt
+  }).length, [notifList, lastNotifSeenAt])
+
+  useEffect(() => {
+    if (!db || (!user?.uid && !user?.email)) return
+    const threadsListeners = []
+    const commentListeners = new Map()
+    const threadsMap = new Map()
+    const attachComments = (thread) => {
+      if (!thread?.id || commentListeners.has(thread.id)) return
+      const col = collection(db, 'foro_threads', thread.id, 'comments')
+      const unsub = onSnapshot(col, (snap) => {
+        const list = []
+        snap.forEach((d) => {
+          const it = d.data() || {}
+          list.push({ id: d.id, threadId: thread.id, threadTitle: thread.titulo || '', texto: it.texto || '', autorNombre: it.autorNombre || it.autorEmail || '', createdAt: it.createdAt })
+        })
+        setNotifList((prev) => {
+          const others = prev.filter((x) => x.threadId !== thread.id)
+          return [...others, ...list].sort((a, b) => (b?.createdAt?.toMillis?.() || 0) - (a?.createdAt?.toMillis?.() || 0))
+        })
+      })
+      commentListeners.set(thread.id, unsub)
+    }
+    const ids = []
+    if (user?.uid) ids.push({ field: 'docenteUid', value: user.uid })
+    if (user?.email) ids.push({ field: 'docenteEmail', value: user.email })
+    ids.forEach(({ field, value }) => {
+      const q = query(collection(db, 'foro_threads'), where(field, '==', value))
+      threadsListeners.push(onSnapshot(q, (snap) => {
+        snap.forEach((d) => { threadsMap.set(d.id, { id: d.id, ...(d.data() || {}) }) })
+        Array.from(threadsMap.values()).forEach(attachComments)
+        Array.from(commentListeners.keys()).forEach((tid) => {
+          if (!threadsMap.has(tid)) {
+            try { commentListeners.get(tid)() } catch { void 0 }
+            commentListeners.delete(tid)
+            setNotifList((prev) => prev.filter((x) => x.threadId !== tid))
+          }
+        })
+      }))
+    })
+    if (user?.uid) {
+      const myCol = collection(db, 'usuarios', user.uid, 'foro_threads')
+      threadsListeners.push(onSnapshot(myCol, (snap) => {
+        snap.forEach((d) => { threadsMap.set(d.id, { id: d.id, ...(d.data() || {}) }) })
+        Array.from(threadsMap.values()).forEach(attachComments)
+        Array.from(commentListeners.keys()).forEach((tid) => {
+          if (!threadsMap.has(tid)) {
+            try { commentListeners.get(tid)() } catch { void 0 }
+            commentListeners.delete(tid)
+            setNotifList((prev) => prev.filter((x) => x.threadId !== tid))
+          }
+        })
+      }))
+    }
+    return () => {
+      threadsListeners.forEach((u) => { try { u() } catch { void 0 } })
+      Array.from(commentListeners.values()).forEach((u) => { try { u() } catch { void 0 } })
+    }
+  }, [user?.uid, user?.email])
 
   return (
     <div className="docente-layout">
@@ -107,7 +174,13 @@ export default function Dashboard({ user, profile }) {
             </button>
           ))}
         </nav>
-        <div className="sidebar-footer">
+        <div className="sidebar-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <button className="menu-item" title="Notificaciones" onClick={() => { setNotifOpen(true); setLastNotifSeenAt(new Date()) }} style={{ position: 'relative' }}>
+            <span style={{ fontSize: '1rem' }}>🔔</span>
+            {notifUnread > 0 && (
+              <span style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#d93025', color: '#fff', borderRadius: '10px', fontSize: '0.72rem', padding: '0 6px' }}>{notifUnread}</span>
+            )}
+          </button>
           <LogoutButton />
         </div>
       </aside>
@@ -120,19 +193,49 @@ export default function Dashboard({ user, profile }) {
         ) : (
           <div className="content-card">
             {active === 'documentos' ? (
-              <DocumentosView uid={user?.uid} name={name} />
+              <DocumentosView uid={user?.uid} name={name} email={user?.email || ''} />
             ) : active === 'horario' ? (
               <HorarioCalendarioView docenteId={user?.uid} docenteEmail={user?.email || ''} />
             ) : active === 'historial-sesiones' ? (
-              <HistorialSesionesView />
+              <HistorialSesionesView docenteId={user?.uid} docenteEmail={user?.email || ''} />
             ) : active === 'historial-derivaciones' ? (
               <DerivacionesHistorialView docenteId={user?.uid} docenteEmail={user?.email || ''} />
+            ) : active === 'material-apoyo' ? (
+              <MaterialApoyoView docenteUid={user?.uid} docenteEmail={user?.email || ''} docenteNombre={name} />
+            ) : active === 'foro' ? (
+              <ForoView docenteUid={user?.uid} docenteEmail={user?.email || ''} docenteNombre={name} />
             ) : (
               <div className="placeholder">Contenido por implementar</div>
             )}
           </div>
         )}
       </main>
+      {notifOpen && (
+        <div className="modal-backdrop" onClick={() => setNotifOpen(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ width: 'min(680px, 92vw)', margin: '2vh auto', boxSizing: 'border-box' }}>
+            <div className="content-header" style={{ textAlign: 'left', fontSize: '1rem' }}>Notificaciones</div>
+            <div style={{ maxHeight: '68vh', overflowY: 'auto', display: 'grid', gap: '0.5rem' }}>
+              {notifList.length === 0 ? (
+                <div className="content-card">Sin notificaciones</div>
+              ) : (
+                notifList.map((n) => (
+                  <div key={`${n.threadId}-${n.id}`} className="content-card" style={{ display: 'grid', gap: '0.25rem', padding: '0.5rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontSize: '0.9rem', color: '#111' }}>{n.threadTitle || 'Tema'}</div>
+                      <div style={{ fontSize: '0.74rem', color: '#666' }}>{n.createdAt ? (n.createdAt.toDate ? n.createdAt.toDate().toLocaleString() : '') : ''}</div>
+                    </div>
+                    <div style={{ fontSize: '0.84rem', color: '#555' }}>{n.autorNombre || ''}</div>
+                    <div style={{ fontSize: '0.94rem', color: '#222', whiteSpace: 'pre-wrap' }}>{n.texto || ''}</div>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="actions" style={{ marginTop: '0.5rem', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+              <button className="menu-item" onClick={() => setNotifOpen(false)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -235,232 +338,7 @@ function DerivacionesHistorialView({ docenteId, docenteEmail }) {
   )
 }
 
-function DocumentosView({ uid, name }) {
-  const [periodo, setPeriodo] = useState('')
-  const [planFile, setPlanFile] = useState(null)
-  const [informeMensualFile, setInformeMensualFile] = useState(null)
-  const [informeFinalFile, setInformeFinalFile] = useState(null)
-  const [sesionesMes, setSesionesMes] = useState('')
-  const [status, setStatus] = useState({ planCount: 0, finalCount: 0, informes: {}, sesiones: {}, aula: { ciclo: '2025-II', seccion: 'A' } })
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [okMsg, setOkMsg] = useState('')
-  const [openPlan, setOpenPlan] = useState(false)
-  const [openMensual, setOpenMensual] = useState(false)
-  const [openFinal, setOpenFinal] = useState(false)
-
-  useEffect(() => {
-    const run = async () => {
-      if (!uid || !db) return
-      const refDoc = doc(db, 'cumplimientos_status', uid)
-      const snap = await getDoc(refDoc)
-      if (snap.exists()) setStatus((prev) => ({ ...prev, ...snap.data() }))
-    }
-    run()
-  }, [uid])
-
-  const validatePdf = (f) => f && f.type === 'application/pdf' && f.size <= 12 * 1024 * 1024
-
-  const uploadFile = async (path, file) => {
-    if (storageProvider === 'supabase' && supabase) {
-      const supaPath = path.replace(/^cumplimientos\//, '')
-      const { error } = await supabase.storage.from('cumplimientos').upload(supaPath, file, { upsert: true })
-      if (error) throw error
-      const { data } = supabase.storage.from('cumplimientos').getPublicUrl(supaPath)
-      return data.publicUrl
-    }
-    if (storage) {
-      const r = ref(storage, path)
-      const up = await uploadBytes(r, file)
-      return await getDownloadURL(up.ref)
-    }
-    if (supabase) {
-      const supaPath = path.replace(/^cumplimientos\//, '')
-      const { error } = await supabase.storage.from('cumplimientos').upload(supaPath, file, { upsert: true })
-      if (error) throw error
-      const { data } = supabase.storage.from('cumplimientos').getPublicUrl(supaPath)
-      return data.publicUrl
-    }
-    throw new Error('No hay storage configurado')
-  }
-
-  const uploadPlan = async () => {
-    if (!uid || !storage) return
-    if (!validatePdf(planFile)) { setError('PDF de plan hasta 12MB'); return }
-    setError(''); setOkMsg(''); setLoading(true)
-    try {
-      const path = `cumplimientos/${uid}/plan/plan_${Date.now()}.pdf`
-      const url = await uploadFile(path, planFile)
-      const next = { ...status, planCount: (status.planCount || 0) + 1, lastPlanUrl: url, updatedAt: serverTimestamp() }
-      await setDoc(doc(db, 'cumplimientos_status', uid), next, { merge: true })
-      setStatus(next)
-      setPlanFile(null)
-      setOkMsg('Plan registrado')
-    } catch (e) { setError(String(e)) } finally { setLoading(false) }
-  }
-
-  const uploadInformeMensual = async () => {
-    if (!uid || !storage) return
-    if (!periodo) { setError('Selecciona periodo'); return }
-    if (!validatePdf(informeMensualFile)) { setError('PDF mensual hasta 12MB'); return }
-    setError(''); setOkMsg(''); setLoading(true)
-    try {
-      const path = `cumplimientos/${uid}/informes_mensuales/${periodo}/informe.pdf`
-      const url = await uploadFile(path, informeMensualFile)
-      const informes = { ...(status.informes || {}) }
-      informes[periodo] = true
-      const next = { ...status, informes, updatedAt: serverTimestamp(), [`lastInforme_${periodo}`]: url }
-      await setDoc(doc(db, 'cumplimientos_status', uid), next, { merge: true })
-      setStatus(next)
-      setInformeMensualFile(null)
-      setOkMsg('Informe mensual registrado')
-    } catch (e) { setError(String(e)) } finally { setLoading(false) }
-  }
-
-  const uploadInformeFinal = async () => {
-    if (!uid || !storage) return
-    if (!validatePdf(informeFinalFile)) { setError('PDF final hasta 12MB'); return }
-    setError(''); setOkMsg(''); setLoading(true)
-    try {
-      const path = `cumplimientos/${uid}/informe_final/final_${Date.now()}.pdf`
-      const url = await uploadFile(path, informeFinalFile)
-      const next = { ...status, finalCount: (status.finalCount || 0) + 1, lastFinalUrl: url, updatedAt: serverTimestamp() }
-      await setDoc(doc(db, 'cumplimientos_status', uid), next, { merge: true })
-      setStatus(next)
-      setInformeFinalFile(null)
-      setOkMsg('Informe final registrado')
-    } catch (e) { setError(String(e)) } finally { setLoading(false) }
-  }
-
-  const saveSesionesMes = async () => {
-    if (!uid || !periodo) { setError('Selecciona periodo'); return }
-    const n = parseInt(sesionesMes, 10)
-    if (Number.isNaN(n) || n < 0) { setError('Número de sesiones inválido'); return }
-    setError(''); setOkMsg(''); setLoading(true)
-    try {
-      const sesiones = { ...(status.sesiones || {}) }
-      sesiones[periodo] = n
-      const next = { ...status, sesiones, updatedAt: serverTimestamp() }
-      await setDoc(doc(db, 'cumplimientos_status', uid), next, { merge: true })
-      setStatus(next)
-      setOkMsg('Sesiones del mes guardadas')
-    } catch (e) { setError(String(e)) } finally { setLoading(false) }
-  }
-
-  const mesesCiclo = ['2025-09', '2025-10', '2025-11', '2025-12']
-  const etiquetasMes = ['Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
-  const hasPlan = (status.planCount || 0) > 0
-  const informeSubido = periodo ? Boolean((status.informes || {})[periodo]) : false
-
-  
-
-  return (
-    <div>
-      <div className="info-card" style={{ marginBottom: '0.75rem' }}>
-        <p>Docente: {name}</p>
-      </div>
-
-      <div className="content-card" style={{ marginBottom: '0.75rem' }}>
-        <h3 className="cumplimiento-title">Tabla de cumplimiento</h3>
-        <div className="table-responsive">
-        <table className="cumplimiento-grid">
-          <thead>
-            <tr>
-              <th>PLAN</th>
-              {mesesCiclo.map((m, idx) => (
-                <Fragment key={m}>
-                  <th>{`N° SESIONES ${etiquetasMes[idx].toUpperCase()}`}</th>
-                  <th>{`INFORME ${etiquetasMes[idx].toUpperCase()}`}</th>
-                </Fragment>
-              ))}
-              <th>INFORME FINAL</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>
-                <span className={`badge ${hasPlan ? 'ok' : 'no'}`}>{hasPlan ? 'SI' : 'NO'}</span>
-              </td>
-              {mesesCiclo.map((m) => (
-                <Fragment key={m}>
-                  <td>
-                    <span className={`badge ${((status.sesiones || {})[m] || 0) > 0 ? 'ok' : 'no'}`}>{(status.sesiones || {})[m] || 0}</span>
-                  </td>
-                  <td>
-                    <span className={`badge ${((status.informes || {})[m]) ? 'ok' : 'no'}`}>{((status.informes || {})[m]) ? 'SI' : 'NO'}</span>
-                  </td>
-                </Fragment>
-              ))}
-              <td>
-                <span className={`badge ${(status.finalCount || 0) > 0 ? 'ok' : 'no'}`}>{(status.finalCount || 0) > 0 ? 'SI' : 'NO'}</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        </div>
-      </div>
-
-      <div className="content-card" style={{ marginBottom: '0.75rem' }}>
-        <h3>Aula tutorada</h3>
-        <p>Ciclo: {status?.aula?.ciclo} · Sección: {status?.aula?.seccion}</p>
-        <div className="action-buttons">
-          <button className="action-btn" onClick={() => setOpenPlan(true)} disabled={hasPlan}>📄 Plan de tutoría</button>
-          <button className="action-btn" onClick={() => setOpenMensual(true)}>🗓️ Informe mensual</button>
-          <button className="action-btn" onClick={() => setOpenFinal(true)}>📘 Informe final</button>
-        </div>
-        {error && <p className="error-text">{error}</p>}
-        {okMsg && <p className="ok-text">{okMsg}</p>}
-      </div>
-
-      {openPlan && (
-        <div className="modal-backdrop" onClick={() => setOpenPlan(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <h4>Subir plan de tutoría</h4>
-            <input type="file" accept="application/pdf" onChange={(e) => setPlanFile(e.target.files?.[0] || null)} disabled={hasPlan} />
-            <div className="modal-actions">
-              <button onClick={() => setOpenPlan(false)}>Cancelar</button>
-              <button onClick={uploadPlan} disabled={loading || hasPlan}>Subir</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {openMensual && (
-        <div className="modal-backdrop" onClick={() => setOpenMensual(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <h4>Informe mensual</h4>
-            <label>Periodo</label>
-            <input type="month" value={periodo} onChange={(e) => setPeriodo(e.target.value)} />
-            <label>Sesiones del mes</label>
-            <input type="number" min="0" value={sesionesMes} onChange={(e) => setSesionesMes(e.target.value)} />
-            <div className="modal-actions">
-              <button onClick={saveSesionesMes} disabled={loading || !periodo}>Guardar sesiones</button>
-            </div>
-            <label>Informe mensual (PDF)</label>
-            <input type="file" accept="application/pdf" onChange={(e) => setInformeMensualFile(e.target.files?.[0] || null)} disabled={informeSubido || !periodo} />
-            <div className="modal-actions">
-              <button onClick={() => setOpenMensual(false)}>Cancelar</button>
-              <button onClick={uploadInformeMensual} disabled={loading || !periodo || informeSubido}>Subir informe</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {openFinal && (
-        <div className="modal-backdrop" onClick={() => setOpenFinal(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <h4>Subir informe final</h4>
-            <input type="file" accept="application/pdf" onChange={(e) => setInformeFinalFile(e.target.files?.[0] || null)} />
-            <div className="modal-actions">
-              <button onClick={() => setOpenFinal(false)}>Cancelar</button>
-              <button onClick={uploadInformeFinal} disabled={loading}>Subir</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
+// DocumentosView moved to ./DocumentosView.jsx
 
 function MisTutoriasView({ ciclo, seccion, docenteId, docenteUid, docenteEmail, docenteNombre }) {
   const [alumnos, setAlumnos] = useState([])
