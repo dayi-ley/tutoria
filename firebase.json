@@ -1,0 +1,13 @@
+{
+  "hosting": {
+    "site": "tutorias-f2283",
+    "public": "dist",
+    "ignore": [
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      { "source": "**", "destination": "/index.html" }
+    ]
+  }
+}

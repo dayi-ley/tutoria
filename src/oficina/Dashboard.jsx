@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { collection, doc, setDoc, getDocs, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import LogoutButton from '../auth/LogoutButton.jsx'
+import GestionAsignacionView from './GestionAsignacion.jsx'
 
 export default function Dashboard({ user }) {
   const [active, setActive] = useState('alumnos')
@@ -322,6 +323,7 @@ export default function Dashboard({ user }) {
   }
 
   const sections = [
+    { key: 'gestion-asignacion', label: 'Gestión de asignación' },
     { key: 'alumnos', label: 'Registrar alumnos' },
     { key: 'asignaciones', label: 'Asignar aula y docente' },
     { key: 'derivaciones', label: 'Derivaciones' },
@@ -360,7 +362,9 @@ export default function Dashboard({ user }) {
         </div>
       </aside>
       <main className="content-area">
-        {active === 'alumnos' ? (
+        {active === 'gestion-asignacion' ? (
+          <GestionAsignacionView />
+        ) : active === 'alumnos' ? (
           <div className="content-card">
             <h3>Registrar alumnos</h3>
             <div className="content-header-row">

@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import LogoutButton from '../auth/LogoutButton.jsx'
 import { EmailAuthProvider, linkWithCredential } from 'firebase/auth'
+import ForoView from '../docente/Foro.jsx'
+import MaterialApoyoView from '../docente/MaterialApoyo.jsx'
+import DenunciasView from './Denuncias.jsx'
 
 export default function EstudianteDashboard({ user }) {
   const name = user?.displayName || user?.email || 'Estudiante'
@@ -132,22 +135,13 @@ export default function EstudianteDashboard({ user }) {
             </div>
           )}
           {active === 'materiales' && (
-            <div>
-              <h2>Materiales de apoyo</h2>
-              <p>Documentos y enlaces compartidos por tutoría.</p>
-            </div>
+            <MaterialApoyoView readAll allowCreate={false} />
           )}
           {active === 'foro' && (
-            <div>
-              <h2>Foro</h2>
-              <p>Acceso de lectura y participación moderada.</p>
-            </div>
+            <ForoView docenteUid={user?.uid} docenteEmail={user?.email || ''} docenteNombre={name} />
           )}
           {active === 'denuncias' && (
-            <div>
-              <h2>Denuncias</h2>
-              <p>Formulario para presentar denuncias institucionales.</p>
-            </div>
+            <DenunciasView estudianteUid={user?.uid} estudianteEmail={user?.email || ''} estudianteNombre={name} />
           )}
         </div>
       </main>

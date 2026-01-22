@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, memo } from 'react'
 import { collection, query, where, onSnapshot, doc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { storage, db, supabase, storageProvider } from '../firebase'
 
-export default function MaterialApoyoView({ docenteUid, docenteEmail, docenteNombre }) {
+export default function MaterialApoyoView({ docenteUid, docenteEmail, docenteNombre, readAll = false, allowCreate = true }) {
   const [items, setItems] = useState([])
   const [newOpen, setNewOpen] = useState(false)
   const [newTema, setNewTema] = useState('')
@@ -26,14 +26,11 @@ export default function MaterialApoyoView({ docenteUid, docenteEmail, docenteNom
       const first = snap.docs[0]?.data() || null
       setDocCiclo(String(first?.ciclo || ''))
     })
-    return () => { try { unsub() } catch { /* noop */ } }
+    return () => { try { unsub() } catch (e) { void e } }
   }, [docenteUid, docenteEmail])
 
   useEffect(() => {
     if (!db) return
-    const idVals = []
-    if (docenteUid) idVals.push(docenteUid)
-    if (docenteEmail) idVals.push(docenteEmail)
     const listeners = []
     const map = new Map()
     const apply = () => {
@@ -43,19 +40,22 @@ export default function MaterialApoyoView({ docenteUid, docenteEmail, docenteNom
         return next
       })
     }
-    if (docenteUid) {
-      const qUid = query(collection(db, 'material_apoyo'), where('docenteUid', '==', docenteUid))
-      listeners.push(onSnapshot(qUid, (snap) => { snap.forEach((d) => map.set(`mat_${d.id}`, { id: d.id, ...(d.data() || {}) })); apply() }))
-      const sub = collection(doc(db, 'usuarios', docenteUid), 'material_apoyo')
-      listeners.push(onSnapshot(sub, (snap) => { snap.forEach((d) => map.set(`sub_${d.id}`, { id: d.id, ...(d.data() || {}) })); apply() }))
-    } else if (docenteEmail) {
-      const qEmail = query(collection(db, 'material_apoyo'), where('docenteEmail', '==', docenteEmail))
-      listeners.push(onSnapshot(qEmail, (snap) => { snap.forEach((d) => map.set(`mat_${d.id}`, { id: d.id, ...(d.data() || {}) })); apply() }))
+    if (readAll) {
+      const qAll = query(collection(db, 'material_apoyo'))
+      listeners.push(onSnapshot(qAll, (snap) => { snap.forEach((d) => map.set(`mat_${d.id}`, { id: d.id, ...(d.data() || {}) })); apply() }))
+    } else {
+      if (docenteUid) {
+        const qUid = query(collection(db, 'material_apoyo'), where('docenteUid', '==', docenteUid))
+        listeners.push(onSnapshot(qUid, (snap) => { snap.forEach((d) => map.set(`mat_${d.id}`, { id: d.id, ...(d.data() || {}) })); apply() }))
+        const sub = collection(doc(db, 'usuarios', docenteUid), 'material_apoyo')
+        listeners.push(onSnapshot(sub, (snap) => { snap.forEach((d) => map.set(`sub_${d.id}`, { id: d.id, ...(d.data() || {}) })); apply() }))
+      } else if (docenteEmail) {
+        const qEmail = query(collection(db, 'material_apoyo'), where('docenteEmail', '==', docenteEmail))
+        listeners.push(onSnapshot(qEmail, (snap) => { snap.forEach((d) => map.set(`mat_${d.id}`, { id: d.id, ...(d.data() || {}) })); apply() }))
+      }
     }
-    return () => listeners.forEach((u) => { try { u() } catch { /* noop */ } })
-  }, [docenteUid, docenteEmail])
-
-  
+    return () => listeners.forEach((u) => { try { u() } catch (e) { void e } })
+  }, [docenteUid, docenteEmail, readAll])
 
   const openNew = () => {
     setNewTema('')
@@ -107,9 +107,7 @@ export default function MaterialApoyoView({ docenteUid, docenteEmail, docenteNom
       await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise
       const data = canvas.toDataURL('image/jpeg')
       setPdfPreview((prev) => (prev[u] ? prev : { ...prev, [u]: data }))
-    } catch {
-      void 0
-    }
+    } catch (e) { void e }
   }
 
   const onChooseFiles = (e) => {
@@ -172,7 +170,8 @@ export default function MaterialApoyoView({ docenteUid, docenteEmail, docenteNom
       try {
         const url = await uploadFile(path, f)
         uploads.push({ name, type: f?.type || '', size: f?.size || 0, url, kind: 'file' })
-      } catch {
+      } catch (e) {
+        void e
         uploads.push({ name, type: f?.type || '', size: f?.size || 0, url: '', kind: 'file' })
       }
     }
@@ -208,9 +207,8 @@ export default function MaterialApoyoView({ docenteUid, docenteEmail, docenteNom
   const openAttachment = (f) => {
     const u = String(f?.url || f?.href || '')
     if (!u) return
-    try { window.open(u, '_blank', 'noopener,noreferrer') } catch { void 0 }
+    try { window.open(u, '_blank', 'noopener,noreferrer') } catch (e) { void e }
   }
-
 
   const downloadAll = (x) => {
     const arr = Array.isArray(x?.files) ? x.files : []
@@ -288,8 +286,10 @@ export default function MaterialApoyoView({ docenteUid, docenteEmail, docenteNom
             </div>
           </div>
         ))}
-        <div className="content-card" onClick={openNew} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '120px', background: '#1f8f4b', color: '#fff', fontSize: '1.6rem', fontWeight: 700 }}>+
-        </div>
+        {allowCreate && (
+          <div className="content-card" onClick={openNew} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '120px', background: '#1f8f4b', color: '#fff', fontSize: '1.6rem', fontWeight: 700 }}>+
+          </div>
+        )}
       </div>
 
       {newOpen && (
@@ -338,7 +338,6 @@ export default function MaterialApoyoView({ docenteUid, docenteEmail, docenteNom
         <div className="tooltip-toast"><div className="tooltip-card">{toastErr}</div></div>
       )}
 
-      
     </div>
   )
 }

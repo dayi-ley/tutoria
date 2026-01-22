@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { collection, query, where, onSnapshot, doc, setDoc, updateDoc, getDocs, serverTimestamp } from 'firebase/firestore'
 import { jsPDF } from 'jspdf'
+import logoTutoria from '../assets/logos/tutoria_isologo.png'
+import logoFiei from '../assets/logos/logo_fiei_2021.png'
 import { db, supabase, storage, storageProvider } from '../firebase'
 
 export default function HorarioCalendarioView({ docenteId, docenteEmail }) {
@@ -17,6 +19,22 @@ export default function HorarioCalendarioView({ docenteId, docenteEmail }) {
   const ENABLE_PDF = true
   const REQUIRE_EVIDENCE = true
   const ENABLE_EVIDENCE_UPLOAD = true
+
+  const loadImage = (src) => new Promise((resolve, reject) => {
+    try {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => resolve(img)
+      img.onerror = (e) => reject(e)
+      img.src = src
+    } catch (e) { reject(e) }
+  })
+  const fileToDataURL = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = (e) => reject(e)
+    reader.readAsDataURL(file)
+  })
 
   useEffect(() => {
     if (!db) return
@@ -280,12 +298,27 @@ export default function HorarioCalendarioView({ docenteId, docenteEmail }) {
         const pdf = new jsPDF({ unit: 'pt', format: 'a4' })
         const pageW = pdf.internal.pageSize.getWidth()
         const margin = 40
+        let yHeader = margin
+        let afterHeaderY = margin
+        try {
+          const leftImg = await loadImage(logoTutoria)
+          const rightImg = await loadImage(logoFiei)
+          const leftW = 54
+          const leftH = (leftImg.naturalHeight / leftImg.naturalWidth) * leftW
+          const rightW = 84
+          const rightH = (rightImg.naturalHeight / rightImg.naturalWidth) * rightW
+          const logoY = yHeader - 10
+          pdf.addImage(leftImg, 'PNG', margin, logoY, leftW, leftH)
+          pdf.addImage(rightImg, 'PNG', pageW - margin - rightW, logoY, rightW, rightH)
+          afterHeaderY = Math.max(logoY + leftH, logoY + rightH) + 10
+        } catch { void 0 }
         pdf.setFont('helvetica', 'bold')
         pdf.setFontSize(16)
-        pdf.text('Constancia de Tutoría', pageW / 2, margin, { align: 'center' })
+        const titleY = afterHeaderY
+        pdf.text('Constancia de Tutoría', pageW / 2, titleY, { align: 'center' })
         pdf.setFont('helvetica', 'normal')
         pdf.setFontSize(11)
-        let y = margin + 24
+        let y = titleY + 28
         pdf.setFont('helvetica', 'bold')
         pdf.text('Datos de la tutoría', margin, y)
         pdf.setFont('helvetica', 'normal')
@@ -338,11 +371,36 @@ export default function HorarioCalendarioView({ docenteId, docenteEmail }) {
           pdf.text(r.presente ? 'Sí' : 'No', tblX + colW1 + 6, ty + 12)
           ty += rowH
         })
-        y = ty + 10
+        y = ty + 56
         pdf.setFont('helvetica', 'bold')
         pdf.text('Evidencias', margin, y)
         pdf.setFont('helvetica', 'normal')
         pdf.text(`${urls.length} imagen(es)`, margin + 90, y)
+        y += 12
+        if (Array.isArray(evFiles) && evFiles.length > 0) {
+          const maxW = pageW - margin * 2
+          const gap = 10
+          const perRow = 2
+          const cellW = (maxW - gap * (perRow - 1)) / perRow
+          let col = 0
+          for (let i = 0; i < evFiles.length; i++) {
+            const f = evFiles[i]
+            try {
+              const dataUrl = await fileToDataURL(f)
+              const img = await loadImage(String(dataUrl))
+              const fmt = String(f?.type || '').includes('png') ? 'PNG' : 'JPEG'
+              const ratio = img.naturalHeight / img.naturalWidth
+              const w = cellW
+              const h = w * ratio
+              if (y + h > pdf.internal.pageSize.getHeight() - margin) { pdf.addPage(); y = margin }
+              const x = margin + (col * (cellW + gap))
+              pdf.addImage(img, fmt, x, y, w, h)
+              col++
+              if (col >= perRow) { col = 0; y += h + gap }
+            } catch { void 0 }
+          }
+          if (col !== 0) y += 10
+        }
         const blob = pdf.output('blob')
         console.log('pdf:generated', { size: blob.size })
         const pdfFile = new File([blob], `constancia_${Date.now()}.pdf`, { type: 'application/pdf' })
